@@ -243,8 +243,7 @@ class App(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title("Screenshot → PDF Appender")
-        tk.Label(self, text="Please disable animations before proceeding — Windows 11: Settings → Accessibility → Animation Effects (Off)", font=("Segoe UI", 8), fg="#e74c3c", wraplength=520, justify=tk.LEFT).pack(anchor="w", padx=14, pady=(4,0))
+        self.title("AutoCapture")
         self.resizable(False, False)
         self.attributes("-topmost", False)
 
@@ -256,6 +255,13 @@ class App(tk.Tk):
         self._clipboard_thread = None
         self._running          = False
         self._stop_event       = threading.Event()
+
+        # tk variables
+        self._autoscroll_on     = tk.BooleanVar(value=False)
+        self._scroll_direction  = tk.StringVar(value="vertical")
+        self._scroll_reverse    = tk.BooleanVar(value=False)
+        self._scroll_pixels     = tk.IntVar(value=10)
+        self._approx_loops      = tk.IntVar(value=10)
 
         # tk variables
         self._pdf_name     = tk.StringVar()
@@ -272,6 +278,15 @@ class App(tk.Tk):
     #  UI construction
     # ─────────────────────────────────────────────────────────────────────────
 
+    def _section(self, parent, row, text):
+        """Render a bold visible section label spanning all columns."""
+        tk.Label(parent, text=text,
+                 font=("Segoe UI", 10, "bold"), fg="#2c3e50",
+                 anchor="w").grid(row=row, column=0, columnspan=6,
+                                  sticky="ew", padx=6, pady=(10, 2))
+        ttk.Separator(parent, orient="horizontal").grid(
+            row=row + 1, column=0, columnspan=6, sticky="ew", padx=4, pady=(0, 4))
+
     def _build_ui(self):
         PAD = dict(padx=6, pady=5)
         FONT_LABEL = ("Segoe UI", 9)
@@ -280,72 +295,79 @@ class App(tk.Tk):
         outer = tk.Frame(self, padx=14, pady=12)
         outer.pack(fill=tk.BOTH, expand=True)
 
-        # ── Row 0: title bar ─────────────────────────────────────────────────
-        tk.Label(outer, text="📄  Screenshot → PDF Appender",
-                 font=("Segoe UI", 12, "bold")).grid(
-            row=0, column=0, columnspan=6, sticky="w", pady=(0, 8))
+        # ── App title ────────────────────────────────────────────────────────
+        tk.Label(outer, text="⚡  AutoCapture",
+                 font=("Segoe UI", 14, "bold"), fg="#1a252f").grid(
+            row=0, column=0, columnspan=6, sticky="w", pady=(0, 4))
 
-        # ── Row 1: PDF Name + Location ───────────────────────────────────────
+        # ── Section 0: IMPORTANT ─────────────────────────────────────────────
+        self._section(outer, 2, "0.  IMPORTANT!")
+        tk.Label(outer,
+                 text="Disable animations before use — Windows 11: Settings → Accessibility → Animation Effects (Off)",
+                 font=("Segoe UI", 8), fg="#e74c3c",
+                 wraplength=520, justify=tk.LEFT).grid(
+            row=4, column=0, columnspan=6, sticky="w", padx=6, pady=(0, 4))
+
+        # ── Section 1: Physical Location ─────────────────────────────────────
+        self._section(outer, 5, "1.  Physical Location")
+
         tk.Label(outer, text="PDF name:", font=FONT_LABEL).grid(
-            row=1, column=0, sticky="e", **PAD)
+            row=7, column=0, sticky="e", **PAD)
         tk.Entry(outer, textvariable=self._pdf_name, width=18,
-                 font=FONT_LABEL).grid(row=1, column=1, sticky="w", **PAD)
-
+                 font=FONT_LABEL).grid(row=7, column=1, sticky="w", **PAD)
         tk.Label(outer, text="Location:", font=FONT_LABEL).grid(
-            row=1, column=2, sticky="e", **PAD)
+            row=7, column=2, sticky="e", **PAD)
         tk.Entry(outer, textvariable=self._pdf_location, width=22,
-                 font=FONT_LABEL).grid(row=1, column=3, sticky="w", **PAD)
+                 font=FONT_LABEL).grid(row=7, column=3, sticky="w", **PAD)
         tk.Button(outer, text="Browse…", font=FONT_BTN,
-                  command=self._browse).grid(row=1, column=4, **PAD)
+                  command=self._browse).grid(row=7, column=4, **PAD)
 
-        ttk.Separator(outer, orient="horizontal").grid(
-            row=2, column=0, columnspan=6, sticky="ew", pady=4)
+        # ── Section 2: Automation Shortcut ───────────────────────────────────
+        self._section(outer, 8, "2.  Automation Shortcut")
 
-        # ── Row 3: Hotkey controls ───────────────────────────────────────────
         self._hotkey_label = tk.Label(
             outer, text=f"Hotkey: [{self._hotkey_str.upper()}]",
             font=FONT_LABEL, fg="#555")
-        self._hotkey_label.grid(row=3, column=0, sticky="e", **PAD)
+        self._hotkey_label.grid(row=10, column=0, sticky="e", **PAD)
 
         tk.Button(outer, text="Edit Hotkey", font=FONT_BTN,
-                  command=self._edit_hotkey).grid(row=3, column=1, **PAD)
+                  command=self._edit_hotkey).grid(row=10, column=1, **PAD)
         tk.Button(outer, text="Edit Hotkey Area", font=FONT_BTN,
-                  command=self._edit_hotkey_area).grid(row=3, column=2, **PAD)
+                  command=self._edit_hotkey_area).grid(row=10, column=2, **PAD)
 
         self._hotkey_area_label = tk.Label(outer, text="(no area set)",
                                            font=FONT_LABEL, fg="#888")
-        self._hotkey_area_label.grid(row=3, column=3, sticky="w", **PAD)
+        self._hotkey_area_label.grid(row=10, column=3, sticky="w", **PAD)
 
         tip1 = tk.Label(outer, text="(?)", font=FONT_LABEL, fg="#3498db",
                         cursor="question_arrow")
-        tip1.grid(row=3, column=4, **PAD)
+        tip1.grid(row=10, column=4, **PAD)
         Tooltip(tip1, "Defines the screen region captured when you press the hotkey.")
 
-        ttk.Separator(outer, orient="horizontal").grid(
-            row=4, column=0, columnspan=6, sticky="ew", pady=4)
+        # ── Section 3a: AutoClickNext ─────────────────────────────────────────
+        self._section(outer, 11, "3(a).  AutoClickNext")
 
-        # ── Row 5: Autonext ──────────────────────────────────────────────────
         tk.Checkbutton(outer, text="Autonext?", variable=self._autonext_on,
                        font=FONT_BTN, command=self._toggle_autonext_ui).grid(
-            row=5, column=0, columnspan=2, sticky="w", **PAD)
+            row=13, column=0, columnspan=2, sticky="w", **PAD)
 
         tip2 = tk.Label(outer, text="(?)", font=FONT_LABEL, fg="#3498db",
                         cursor="question_arrow")
-        tip2.grid(row=5, column=2, sticky="w", **PAD)
+        tip2.grid(row=13, column=2, sticky="w", **PAD)
         Tooltip(tip2, "Automates a capture → click → capture loop N times.")
 
         self._autonext_btn = tk.Button(
             outer, text="Set Click Location", font=FONT_BTN,
             command=self._set_click_location, state=tk.DISABLED)
-        self._autonext_btn.grid(row=5, column=3, **PAD)
+        self._autonext_btn.grid(row=13, column=3, **PAD)
 
         self._click_pos_label = tk.Label(outer, text="(none)", font=FONT_LABEL,
                                          fg="#888")
-        self._click_pos_label.grid(row=5, column=4, sticky="w", **PAD)
+        self._click_pos_label.grid(row=13, column=4, sticky="w", **PAD)
 
         # loop count
         self._loop_frame = tk.Frame(outer)
-        self._loop_frame.grid(row=5, column=5, sticky="w", **PAD)
+        self._loop_frame.grid(row=13, column=5, sticky="w", **PAD)
         tk.Label(self._loop_frame, text="Loops:", font=FONT_LABEL).pack(
             side=tk.LEFT)
         self._loop_spin = tk.Spinbox(
@@ -354,52 +376,117 @@ class App(tk.Tk):
             state=tk.DISABLED)
         self._loop_spin.pack(side=tk.LEFT, padx=(3, 0))
 
-        ttk.Separator(outer, orient="horizontal").grid(
-            row=6, column=0, columnspan=6, sticky="ew", pady=4)
+        # ── Section 3b: AutoScrollNext ────────────────────────────────────────
+        self._section(outer, 14, "3(b).  AutoScrollNext")
 
-        # ── Row 7: Start / Stop + status ─────────────────────────────────────
+        tk.Checkbutton(outer, text="Autoscroll?", variable=self._autoscroll_on,
+                       font=FONT_BTN, command=self._toggle_autoscroll_ui).grid(
+            row=16, column=0, columnspan=2, sticky="w", **PAD)
+
+        tip_as = tk.Label(outer, text="(?)", font=FONT_LABEL, fg="#3498db",
+                          cursor="question_arrow")
+        tip_as.grid(row=16, column=2, sticky="w", **PAD)
+        Tooltip(tip_as, (
+            "Autoscroll mode: captures the hotkey area, scrolls by the exact pixel "
+            "height (vertical) or width (horizontal) of that area, captures again, "
+            "and repeats. Mutual-exclusive with Autonext."
+        ))
+
+        tk.Label(outer, text="Direction:", font=FONT_LABEL).grid(
+            row=17, column=0, sticky="e", **PAD)
+        rb_v = tk.Radiobutton(outer, text="Vertical (scroll ↓)",
+                              variable=self._scroll_direction, value="vertical",
+                              font=FONT_LABEL, state=tk.DISABLED)
+        rb_v.grid(row=17, column=1, sticky="w", **PAD)
+        rb_h = tk.Radiobutton(outer, text="Horizontal (scroll →)",
+                              variable=self._scroll_direction, value="horizontal",
+                              font=FONT_LABEL, state=tk.DISABLED)
+        rb_h.grid(row=17, column=2, columnspan=2, sticky="w", **PAD)
+
+        rb_rev = tk.Checkbutton(outer, text="Reverse scroll",
+                                variable=self._scroll_reverse,
+                                font=FONT_LABEL, state=tk.DISABLED)
+        rb_rev.grid(row=17, column=4, sticky="w", **PAD)
+
+        tk.Label(outer, text="Scroll units:", font=FONT_LABEL).grid(
+            row=18, column=0, sticky="e", **PAD)
+        spin_px = tk.Spinbox(outer, from_=1, to=9999, width=6,
+                             textvariable=self._scroll_pixels,
+                             font=FONT_LABEL, state=tk.DISABLED)
+        spin_px.grid(row=18, column=1, sticky="w", **PAD)
+
+        tip_px = tk.Label(outer, text="(?)", font=FONT_LABEL, fg="#3498db",
+                          cursor="question_arrow")
+        tip_px.grid(row=18, column=2, sticky="w", **PAD)
+        Tooltip(tip_px, (
+            "Scroll units per step (OS scroll ticks, NOT screen pixels).\n"
+            "Start with a small number like 5, run one test capture, "
+            "and adjust up/down until the two captures align perfectly with no overlap and no gap.\n"
+            "Typical values: 3–15 depending on your OS scroll speed settings."
+        ))
+
+        tk.Label(outer, text="Approx loops:", font=FONT_LABEL).grid(
+            row=18, column=3, sticky="e", **PAD)
+        spin_loops = tk.Spinbox(outer, from_=1, to=9999, width=6,
+                                textvariable=self._approx_loops,
+                                font=FONT_LABEL, state=tk.DISABLED)
+        spin_loops.grid(row=18, column=4, sticky="w", **PAD)
+
+        tip_loops = tk.Label(outer, text="(?)", font=FONT_LABEL, fg="#3498db",
+                             cursor="question_arrow")
+        tip_loops.grid(row=18, column=5, sticky="w", **PAD)
+        Tooltip(tip_loops, (
+            "Approximate number of scroll-captures needed to cover the whole document.\n"
+            "Example: a 57-page PDF viewed at 50% zoom needs ~114 loops.\n"
+            "After this many captures a confirmation dialog appears after every "
+            "additional capture until you press Stop."
+        ))
+
+        # collect widgets to enable/disable together
+        self._autoscroll_widgets = [rb_v, rb_h, rb_rev, spin_px, spin_loops]
+
+        # ── Section 4: Automate and Relax ─────────────────────────────────────
+        self._section(outer, 19, "4.  Automate and Relax~")
+
         self._start_btn = tk.Button(
             outer, text="▶  Start Appending", font=FONT_BTN,
             bg="#27ae60", fg="white", width=18,
             command=self._start_appending)
-        self._start_btn.grid(row=7, column=0, columnspan=2, **PAD)
+        self._start_btn.grid(row=21, column=0, columnspan=2, **PAD)
 
         self._stop_btn = tk.Button(
             outer, text="■  Stop Appending", font=FONT_BTN,
             bg="#c0392b", fg="white", width=18,
             command=self._stop_appending, state=tk.DISABLED)
-        self._stop_btn.grid(row=7, column=2, columnspan=2, **PAD)
+        self._stop_btn.grid(row=21, column=2, columnspan=2, **PAD)
 
-        # live status indicator (blinking dot)
         self._status_canvas = tk.Canvas(outer, width=16, height=16,
                                         highlightthickness=0)
-        self._status_canvas.grid(row=7, column=4, **PAD)
+        self._status_canvas.grid(row=21, column=4, **PAD)
         self._status_dot = self._status_canvas.create_oval(
             2, 2, 14, 14, fill="#888", outline="")
 
         self._status_label = tk.Label(outer, text="Stopped",
                                       font=FONT_LABEL, fg="#888")
-        self._status_label.grid(row=7, column=5, sticky="w", **PAD)
+        self._status_label.grid(row=21, column=5, sticky="w", **PAD)
 
-        ttk.Separator(outer, orient="horizontal").grid(
-            row=8, column=0, columnspan=6, sticky="ew", pady=4)
+        # ── Section: Utilities ────────────────────────────────────────────────
+        self._section(outer, 22, "Utilities")
 
-        # ── Row 9: Always on top ─────────────────────────────────────────────
         tk.Checkbutton(outer, text="Stay Always On Top",
                        variable=self._always_top,
                        font=FONT_LABEL).grid(
-            row=9, column=0, columnspan=3, sticky="w", **PAD)
+            row=24, column=0, columnspan=3, sticky="w", **PAD)
 
         tk.Checkbutton(outer, text="Upscale image (2×) before appending",
                        variable=self._upscale,
                        font=FONT_LABEL).grid(
-            row=9, column=3, columnspan=3, sticky="w", **PAD)
+            row=24, column=3, columnspan=3, sticky="w", **PAD)
 
-        # ── Row 10: info bar ──────────────────────────────────────────────────
         self._info_bar = tk.Label(
             outer, text="Tip: Win+Shift+S captures to clipboard automatically.",
             font=("Segoe UI", 8), fg="#999", anchor="w")
-        self._info_bar.grid(row=10, column=0, columnspan=6, sticky="ew",
+        self._info_bar.grid(row=25, column=0, columnspan=6, sticky="ew",
                             pady=(4, 0))
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -416,11 +503,28 @@ class App(tk.Tk):
 
     def _toggle_autonext_ui(self):
         if self._autonext_on.get():
+            self._autoscroll_on.set(False)
+            self._toggle_autoscroll_ui()
             self._autonext_btn.config(state=tk.NORMAL)
             self._loop_spin.config(state="normal")
         else:
             self._autonext_btn.config(state=tk.DISABLED)
             self._loop_spin.config(state=tk.DISABLED)
+
+    def _toggle_autoscroll_ui(self):
+        if self._autoscroll_on.get():
+            self._autonext_on.set(False)
+            self._toggle_autonext_ui_silent()
+            for w in self._autoscroll_widgets:
+                w.config(state=tk.NORMAL)
+        else:
+            for w in self._autoscroll_widgets:
+                w.config(state=tk.DISABLED)
+
+    def _toggle_autonext_ui_silent(self):
+        """Disable autonext widgets without triggering mutual-exclusion loop."""
+        self._autonext_btn.config(state=tk.DISABLED)
+        self._loop_spin.config(state=tk.DISABLED)
 
     # ── Edit hotkey ────────────────────────────────────────────────────────
 
@@ -554,11 +658,91 @@ class App(tk.Tk):
             name += ".pdf"
         return os.path.join(self._pdf_location.get().strip(), name)
 
+    def _resolve_pdf_path(self) -> str | None:
+        """
+        If the target PDF already exists, ask the user what to do.
+        Returns the final path to use, or None if the user cancelled.
+        """
+        path = self._pdf_path()
+        if not os.path.exists(path):
+            return path
+
+        dlg = tk.Toplevel(self)
+        dlg.title("PDF already exists")
+        dlg.attributes("-topmost", True)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+
+        tk.Label(dlg,
+                 text=f'"{os.path.basename(path)}" already exists.\nWhat would you like to do?',
+                 font=("Segoe UI", 10), padx=20, pady=14).pack()
+
+        choice = [None]
+
+        def _append():
+            choice[0] = "append"
+            dlg.destroy()
+
+        def _overwrite():
+            choice[0] = "overwrite"
+            dlg.destroy()
+
+        def _rename():
+            choice[0] = "rename"
+            dlg.destroy()
+
+        def _cancel():
+            choice[0] = None
+            dlg.destroy()
+
+        bar = tk.Frame(dlg)
+        bar.pack(pady=(0, 14))
+        tk.Button(bar, text="Append to existing", width=20,
+                  command=_append, bg="#2980b9", fg="white",
+                  font=("Segoe UI", 9, "bold")).pack(pady=3)
+        tk.Button(bar, text="Overwrite (new PDF, same name)", width=20,
+                  command=_overwrite, bg="#e67e22", fg="white",
+                  font=("Segoe UI", 9, "bold")).pack(pady=3)
+        tk.Button(bar, text="Save as (name)(1).pdf", width=20,
+                  command=_rename, bg="#27ae60", fg="white",
+                  font=("Segoe UI", 9, "bold")).pack(pady=3)
+        tk.Button(bar, text="Cancel", width=20,
+                  command=_cancel,
+                  font=("Segoe UI", 9)).pack(pady=3)
+
+        dlg.bind("<Escape>", lambda e: _cancel())
+        dlg.focus_force()
+        dlg.wait_window()
+
+        if choice[0] is None:
+            return None
+        if choice[0] == "append":
+            return path
+        if choice[0] == "overwrite":
+            os.remove(path)
+            return path
+        # rename: find first free (name)(N).pdf
+        base = self._pdf_name.get().strip()
+        if base.lower().endswith(".pdf"):
+            base = base[:-4]
+        folder = self._pdf_location.get().strip()
+        n = 1
+        while True:
+            candidate = os.path.join(folder, f"{base}({n}).pdf")
+            if not os.path.exists(candidate):
+                self._pdf_name.set(f"{base}({n})")
+                return candidate
+            n += 1
+
     def _start_appending(self):
         err = self._validate()
         if err:
             messagebox.showerror("Validation error", err)
             return
+
+        final_path = self._resolve_pdf_path()
+        if final_path is None:
+            return   # user cancelled
 
         self._running = True
         self._stop_event.clear()
@@ -568,6 +752,9 @@ class App(tk.Tk):
 
         if self._autonext_on.get():
             t = threading.Thread(target=self._autonext_loop, daemon=True)
+            t.start()
+        elif self._autoscroll_on.get():
+            t = threading.Thread(target=self._autoscroll_loop, daemon=True)
             t.start()
         else:
             # start both clipboard listener and hotkey listener
@@ -702,6 +889,118 @@ class App(tk.Tk):
         self.after(0, self._stop_appending)
         self.after(0, self._set_status,
                    f"Autonext complete – {n} captures saved.")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    #  Autoscroll loop
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _autoscroll_loop(self):
+        if not PYNPUT_OK:
+            self.after(0, messagebox.showwarning, "pynput missing",
+                       "Autoscroll requires pynput:\n  pip install pynput")
+            self.after(0, self._stop_appending)
+            return
+
+        if not self._capture_region:
+            self.after(0, messagebox.showerror, "No capture area",
+                       "Set a hotkey capture area before starting Autoscroll.")
+            self.after(0, self._stop_appending)
+            return
+
+        x1, y1, x2, y2 = self._capture_region
+        region_w = x2 - x1
+        region_h = y2 - y1
+        cx = (x1 + x2) // 2
+        cy = (y1 + y2) // 2
+
+        direction   = self._scroll_direction.get()   # "vertical" or "horizontal"
+        reverse     = self._scroll_reverse.get()
+        px_setting  = self._scroll_pixels.get()
+        approx      = self._approx_loops.get()
+
+        # pixel distance per scroll step
+        if px_setting > 0:
+            step_px = px_setting
+        else:
+            step_px = region_h if direction == "vertical" else region_w
+
+        scroll_sign = -1 if not reverse else 1   # -1 = forward (down/right)
+        mc = pynput_mouse.Controller()
+        loop_count = 0
+
+        while not self._stop_event.is_set():
+            # --- capture ---
+            img = self._capture_region_image()
+            if img:
+                self._save_capture(img)
+            loop_count += 1
+
+            if self._stop_event.is_set():
+                break
+
+            # --- confirmation after approx loops ---
+            if loop_count >= approx:
+                confirmed = [None]
+                event = threading.Event()
+
+                def _ask():
+                    dlg = tk.Toplevel(self)
+                    dlg.title("Continue scrolling?")
+                    dlg.attributes("-topmost", True)
+                    dlg.resizable(False, False)
+                    dlg.grab_set()
+                    tk.Label(dlg,
+                             text=(f"Reached {loop_count} loops "
+                                   f"(approx target was {approx}).\n\n"
+                                   "Continue capturing?\n\n"
+                                   "  Enter = Yes, one more then ask again\n"
+                                   "  Esc   = Stop appending now"),
+                             font=("Segoe UI", 10), padx=20, pady=14,
+                             justify=tk.LEFT).pack()
+                    bar = tk.Frame(dlg)
+                    bar.pack(pady=(0, 12))
+
+                    def _yes():
+                        confirmed[0] = "yes"
+                        dlg.destroy()
+                        event.set()
+
+                    def _no():
+                        confirmed[0] = "no"
+                        dlg.destroy()
+                        event.set()
+
+                    tk.Button(bar, text="✔  Yes  (Enter)", width=16,
+                              command=_yes, bg="#2ecc71", fg="white",
+                              font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT, padx=6)
+                    tk.Button(bar, text="✘  No  (Esc)", width=16,
+                              command=_no, bg="#e74c3c", fg="white",
+                              font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT, padx=6)
+                    dlg.bind("<Return>", lambda e: _yes())
+                    dlg.bind("<Escape>", lambda e: _no())
+                    dlg.focus_force()
+
+                self.after(0, _ask)
+                event.wait()
+
+                if confirmed[0] != "yes":
+                    self.after(0, self._stop_appending)
+                    return
+
+            # --- scroll (units are OS scroll ticks, calibrate with Scroll px field) ---
+            time.sleep(0.15)
+            mc.position = (cx, cy)
+            time.sleep(0.05)
+            units = max(1, step_px) * scroll_sign
+            if direction == "vertical":
+                mc.scroll(0, units)          # negative = down
+            else:
+                mc.scroll(units, 0)          # positive = right
+            time.sleep(0.4)
+
+        self.after(0, self._stop_appending)
+        self.after(0, self._set_status,
+                   f"Autoscroll complete – {loop_count} captures saved.")
 
     # ─────────────────────────────────────────────────────────────────────────
     #  Status indicator

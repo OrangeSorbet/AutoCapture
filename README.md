@@ -55,6 +55,11 @@ A lightweight desktop tool to capture screenshots and append them directly into 
    - Set loop count  
    - App captures and navigates automatically  
 
+   Autoscroll Mode
+   - Define capture region and scroll amount (trial and error)   
+   - Set approximate loop count (as to how many loops might be needed to finish the entire document)   
+   - App captures and navigates automatically 
+
 ---
 
 ## Getting Started (Developers)
