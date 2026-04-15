@@ -1,6 +1,9 @@
 pyinstaller
 pillow
 pypdf
+pymupdf
 reportlab
 pynput
 pyautogui
+numpy
+opencv-python
