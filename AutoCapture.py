@@ -2,12 +2,13 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 import time
-import os
+import os, sys
 import io
 import json
 import cv2
 import numpy as np
 from PIL import Image
+Image.MAX_IMAGE_PIXELS = None
 
 # ── lazy imports so the app shows a clear error if something is missing ──────
 try:
@@ -37,6 +38,12 @@ except ImportError:
 # ─────────────────────────────────────────────────────────────────────────────
 #  Helpers
 # ─────────────────────────────────────────────────────────────────────────────
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 def image_to_pdf_bytes(img: Image.Image) -> bytes:
     """Convert a PIL Image to a single-page PDF (bytes)."""
@@ -227,9 +234,14 @@ class Tooltip:
             self._tip = None
 
 def get_autocapture_path():
-    base = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base, "autosave.autocapture")
+    import os, sys
 
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)  # folder where EXE is
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+
+    return os.path.join(base, "autosave.autocapture")
 
 def save_progress(app, path=None):
     if path is None:
@@ -288,6 +300,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AutoCapture")
+        self.iconbitmap(resource_path("icon.ico"))
         # Get screen size
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
@@ -1011,7 +1024,6 @@ class App(tk.Tk):
                     color="#888"
                 )
 
-            # 🔥 AUTO SAVE STATE
             save_progress(self)
         except Exception as exc:
             self._set_status(f"Error saving: {exc}", color="#e74c3c")
@@ -1355,6 +1367,7 @@ class App(tk.Tk):
         menu = tk.Menu(self, tearoff=0)
         menu.add_command(label="Use current PDF", command=lambda: self._do_merge(None))
         menu.add_command(label="Choose a different PDF…", command=lambda: self._do_merge("pick"))
+        menu.add_command(label="Merge multiple PDFs into one long page…", command=lambda: self._do_merge("multi"))
 
         btn = self._merge_btn
         x = btn.winfo_rootx()
@@ -1367,42 +1380,95 @@ class App(tk.Tk):
         except ImportError:
             return
 
-        if mode == "pick":
+        if mode == "multi":
+            pdf_paths = filedialog.askopenfilenames(
+                title="Select PDFs to merge (in order)", filetypes=[("PDF Files", "*.pdf")])
+            if not pdf_paths:
+                return
+            pdf_paths = list(pdf_paths)
+        elif mode == "pick":
             pdf_path = filedialog.askopenfilename(
                 title="Select PDF to merge", filetypes=[("PDF Files", "*.pdf")])
             if not pdf_path:
                 return
+            pdf_paths = [pdf_path]
         else:
             pdf_path = self._pdf_path()
             if not os.path.exists(pdf_path):
                 messagebox.showerror("File not found",
                     f"No PDF found at:\n{pdf_path}\n\nCapture some pages first.")
                 return
+            pdf_paths = [pdf_path]
 
         self._set_status("Merging pages into single page…", color="#888")
         self.update_idletasks()
 
         try:
-            doc = fitz.open(pdf_path)
             images = []
-            for page in doc:
-                pix = page.get_pixmap(matrix=fitz.Matrix(1, 1))
-                mode_str = "RGBA" if pix.alpha else "RGB"
-                img = Image.frombytes(mode_str, [pix.width, pix.height], pix.samples)
-                images.append(img)
-            doc.close()
+            for pdf_path in pdf_paths:
+                doc = fitz.open(pdf_path)
+                for page in doc:
+                    pix = page.get_pixmap(matrix=fitz.Matrix(1, 1))
+                    mode_str = "RGBA" if pix.alpha else "RGB"
+                    img = Image.frombytes(mode_str, [pix.width, pix.height], pix.samples)
+                    images.append(img)
+                doc.close()
 
-            total_height = sum(img.height for img in images)
-            max_width = max(img.width for img in images)
-            combined_mode = "RGBA" if any(img.mode == "RGBA" for img in images) else "RGB"
-            combined = Image.new(
-                combined_mode, (max_width, total_height),
-                (255, 255, 255, 0) if combined_mode == "RGBA" else (255, 255, 255)
-            )
-            y_offset = 0
-            for img in images:
-                combined.paste(img, (0, y_offset))
-                y_offset += img.height
+            # Smart stitch: detect and remove overlapping rows between consecutive images
+            rgb_images = [img.convert("RGB") for img in images]
+            arrays = [np.array(f) for f in rgb_images]
+
+            def find_overlap_merge(arr_a, arr_b):
+                gray_a = cv2.cvtColor(arr_a, cv2.COLOR_RGB2GRAY)
+                gray_b = cv2.cvtColor(arr_b, cv2.COLOR_RGB2GRAY)
+                ha, wa = gray_a.shape
+                hb, wb = gray_b.shape
+                if wa != wb:
+                    return 0
+                max_overlap = min(ha, hb) // 2
+                if max_overlap < 4:
+                    return 0
+                best_overlap = 0
+                best_score = 0.0
+                for frac in (0.5, 0.4, 0.3, 0.2):
+                    t_h = max(int(min(ha, hb) * frac), 8)
+                    template = gray_b[:t_h, :]
+                    search = gray_a[ha - t_h * 2:, :]
+                    if search.shape[0] <= template.shape[0]:
+                        continue
+                    res = cv2.matchTemplate(search, template, cv2.TM_CCOEFF_NORMED)
+                    _, val, _, loc = cv2.minMaxLoc(res)
+                    if val > best_score:
+                        best_score = val
+                        best_overlap = search.shape[0] - loc[1]
+                if best_score < 0.70:
+                    return 0
+                return max(0, min(best_overlap, max_overlap))
+
+            strips = [arrays[0]]
+            for i in range(1, len(arrays)):
+                ov = find_overlap_merge(arrays[i - 1], arrays[i])
+                strips.append(arrays[i][ov:] if ov > 0 else arrays[i])
+
+            width = max(a.shape[1] for a in strips)
+            total_h = sum(a.shape[0] for a in strips)
+            canvas_arr = np.full((total_h, width, 3), 255, dtype=np.uint8)
+            y = 0
+            for a in strips:
+                h, w = a.shape[:2]
+                canvas_arr[y:y + h, :w] = a
+                y += h
+            combined = Image.fromarray(canvas_arr)
+
+            combined_arr = np.array(combined.convert("RGB"))
+            MAX_DIM = 65500
+            h, w = combined_arr.shape[:2]
+            if h > MAX_DIM or w > MAX_DIM:
+                scale = min(MAX_DIM / h, MAX_DIM / w, 1.0)
+                new_w = max(1, int(w * scale))
+                new_h = max(1, int(h * scale))
+                combined_arr = cv2.resize(combined_arr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+                combined = Image.fromarray(combined_arr)
 
             save_path = filedialog.asksaveasfilename(
                 title="Save merged single-page PDF",

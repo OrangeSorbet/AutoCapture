@@ -3,7 +3,7 @@
 from PyInstaller.utils.hooks import collect_all
 
 # Collect everything properly (fixes your crash)
-datas = []
+datas = [("icon.ico", ".")]
 binaries = []
 hiddenimports = []
 
